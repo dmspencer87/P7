@@ -57,7 +57,6 @@ public class FileTransfer {
                 ObjectInputStream ois = new ObjectInputStream(is);
                 OutputStream os = socket.getOutputStream();
                 ObjectOutputStream oos = new ObjectOutputStream(os);
-                while (true) {
                     try {
                         StartMessage sm = (StartMessage) ois.readObject();
                         AckMessage am = new AckMessage(0);
@@ -90,7 +89,7 @@ public class FileTransfer {
                         BufferedWriter out = new BufferedWriter(new FileWriter("test2.txt"));
                         out.write(fMessage);
                         out.close();
-                        checkEnd(socket);
+                        Message stop = new StopMessage("test.txt");
                         ois.close();
                         os.close();
                         is.close();
@@ -102,7 +101,6 @@ public class FileTransfer {
                     catch (Exception e) {
                         System.out.println("error");
                     }
-                }
             }
         }
 
@@ -110,7 +108,15 @@ public class FileTransfer {
             String publicKey = args[1];
             String host = args[2];
             int port = Integer.parseInt(args[3]);
-            byte[] sessionKey = createSessionKey(publicKey);
+            ObjectInputStream os = new ObjectInputStream(new FileInputStream(publicKey));
+            RSAPublicKey pKey = (RSAPublicKey)os.readObject();
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+            keyGen.init(128);
+            sKey = keyGen.generateKey();
+            Cipher cipher = Cipher.getInstance("RSA");
+            cipher.init(Cipher.WRAP_MODE, pKey);
+            byte[] key = cipher.wrap(sKey);
+
             try (Socket socket = new Socket(host, port)) {
                 if (socket.isConnected()) {
                     Scanner keyboard = new Scanner(System.in);
@@ -138,7 +144,7 @@ public class FileTransfer {
                             + fileSize + ".");
                     System.out.println("Sending " + chunkSize + " chunks.");
 
-                    sendFile(outFile, cunkNum, socket, chunkSize, sessionKey);
+                    sendFile(outFile, cunkNum, socket, chunkSize, key);
                     ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
                     oos.writeObject(new StopMessage(inFile));
                     System.exit(0);
@@ -197,17 +203,6 @@ public class FileTransfer {
 
         }
     }
-            
- 
-    public static void checkEnd(Socket socket) {
-        try {
-            Message stop = new StopMessage("test.txt");
-            System.exit(0);
-        }
-        catch (Exception e) {
-            System.out.println("error");
-        }
-    }
     
     public static byte[] encryptChunk(byte[] data) throws Exception {
         Cipher cipher = Cipher.getInstance("AES");
@@ -223,17 +218,6 @@ public class FileTransfer {
         return decryptedChunk;
     }
 
-    public static byte[] createSessionKey(String publicKeyName) throws Exception {
-        ObjectInputStream os = new ObjectInputStream(new FileInputStream(publicKeyName));
-        RSAPublicKey publicKey = (RSAPublicKey)os.readObject();
-        KeyGenerator keyGen = KeyGenerator.getInstance("AES");
-        keyGen.init(128);
-        sKey = keyGen.generateKey();
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init(Cipher.WRAP_MODE, publicKey);
-        byte[] key = cipher.wrap(sKey);
-        return key;
-    }
 
     public static int getChecksum(byte[] bytes) {
         int length = bytes.length;
